@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write  # needed for GHCR
+      packages: write # needed for GHCR
 
     steps:
       # Checkout code
@@ -30,4 +30,6 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository }}:latest
+          tags: |
+            ghcr.io/rkd-sh64/obscyra:latest
+            ghcr.io/rkd-sh64/obscyra:${{ github.sha }}
