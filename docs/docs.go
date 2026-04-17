@@ -15,6 +15,164 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/auth/google/callback": {
+            "get": {
+                "description": "Handles the callback from Google OAuth, exchanges the code for a token, retrieves user info, and either logs in or registers the user based on the flow type. Issues a JWT token and sets it in an HTTP-only cookie before redirecting the user to the appropriate frontend page.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Handle Google OAuth callback",
+                "responses": {
+                    "302": {
+                        "description": "Redirects to frontend with login/register status"
+                    },
+                    "400": {
+                        "description": "Invalid OAuth state",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/google/login": {
+            "get": {
+                "description": "Initiates the Google OAuth login flow by generating a state parameter and redirecting the user to Google's OAuth consent screen.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Initiate Google OAuth login",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Optional redirect type (login or register)",
+                        "name": "redirect",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Redirects to Google OAuth consent screen"
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/login": {
+            "post": {
+                "description": "Authenticates a user and issues a JWT token in an HTTP-only cookie. Expects JSON body with username and password. Validates credentials against the database, and on success, returns the user's public key and encrypted private key in the response.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "User login",
+                "parameters": [
+                    {
+                        "description": "Login request",
+                        "name": "loginRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.LoginInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Login successful, returns public and encrypted private keys",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid credentials",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/sign-up": {
+            "post": {
+                "description": "Registers a new user with username, email, password, public key, and encrypted private key. Validates input and checks for existing username/email before creating the account. Returns success message on successful registration.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "User registration",
+                "parameters": [
+                    {
+                        "description": "Registration request",
+                        "name": "registrationRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RegisterInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "User registered successfully",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input or user already exists",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/files/complete": {
             "post": {
                 "description": "Verifies uploaded files on R2, stores file metadata, and registers the upload session in the database. Each transfer is valid for 1 hour and limited to 100MB for anonymous uploads.",
@@ -155,6 +313,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/logout": {
+            "post": {
+                "description": "Logs out the current user by clearing the JWT token cookie. Returns a success message on successful logout.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "User logout",
+                "responses": {
+                    "200": {
+                        "description": "Logged out successfully",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/me": {
+            "get": {
+                "description": "Retrieves the current user's session information based on the JWT token. Returns user ID, username, and email. Requires authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Get current user session",
+                "responses": {
+                    "200": {
+                        "description": "User session retrieved successfully",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - invalid or missing token",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Payload"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/share/{token}": {
             "get": {
                 "description": "Returns metadata (name, size, contentType, index) of all files in a shared transfer.",
@@ -287,7 +497,24 @@ const docTemplate = `{
                         }
                     }
                 },
+                "recipientKeys": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.RecipientInput"
+                    }
+                },
                 "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.LoginInput": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "username": {
                     "type": "string"
                 }
             }
@@ -316,6 +543,39 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "uploadURL": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.RecipientInput": {
+            "type": "object",
+            "properties": {
+                "encryptedKey": {
+                    "description": "The encrypted AES key",
+                    "type": "string"
+                },
+                "publicKey": {
+                    "description": "Used to find the User ID",
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.RegisterInput": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "encryptedPrivateKey": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "publicKey": {
+                    "type": "string"
+                },
+                "username": {
                     "type": "string"
                 }
             }
