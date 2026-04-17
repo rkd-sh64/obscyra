@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rohits-web03/obscyra/internal/api/middleware"
 	"github.com/rohits-web03/obscyra/internal/api/services"
 	"github.com/rohits-web03/obscyra/internal/config"
 	"github.com/rohits-web03/obscyra/internal/models"
@@ -18,7 +19,31 @@ import (
 	"gorm.io/gorm"
 )
 
-// POST /auth/sign-up
+type RegisterInput struct {
+	Username            string `json:"username"`
+	Email               string `json:"email"`
+	Password            string `json:"password"`
+	PublicKey           string `json:"publicKey"`
+	EncryptedPrivateKey string `json:"encryptedPrivateKey"`
+}
+
+type LoginInput struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// POST /api/v1/auth/sign-up
+// Registers a new user with username, email, password, public key, and encrypted private key. Validates input and checks for existing username/email before creating the account. Returns success message on successful registration.
+// @Summary User registration
+// @Description Registers a new user with username, email, password, public key, and encrypted private key. Validates input and checks for existing username/email before creating the account. Returns success message on successful registration.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param registrationRequest body RegisterInput true "Registration request"
+// @Success 201 {object} utils.Payload "User registered successfully"
+// @Failure 400 {object} utils.Payload "Invalid input or user already exists"
+// @Failure 500 {object} utils.Payload "Internal server error"
+// @Router /api/v1/auth/sign-up [post]
 func RegisterUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.JSONResponse(w, http.StatusMethodNotAllowed, utils.Payload{
@@ -124,7 +149,19 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// POST /auth/login
+// POST /api/v1/auth/login
+// Authenticates a user and issues a JWT token in an HTTP-only cookie. Expects JSON body with username and password. Validates credentials against the database, and on success, returns the user's public key and encrypted private key in the response.
+// @Summary User login
+// @Description Authenticates a user and issues a JWT token in an HTTP-only cookie. Expects JSON body with username and password. Validates credentials against the database, and on success, returns the user's public key and encrypted private key in the response.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param loginRequest body LoginInput true "Login request"
+// @Success 200 {object} utils.Payload "Login successful, returns public and encrypted private keys"
+// @Failure 400 {object} utils.Payload "Invalid input"
+// @Failure 401 {object} utils.Payload "Invalid credentials"
+// @Failure 500 {object} utils.Payload "Internal server error"
+// @Router /api/v1/auth/login [post]
 func LoginUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.JSONResponse(w, http.StatusMethodNotAllowed, utils.Payload{
@@ -135,10 +172,7 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse request body
-	var input struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
+	var input LoginInput
 
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
@@ -251,7 +285,54 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// POST /api/auth/logout
+// GET /api/v1/me
+// Fetches the current user's session info based on the JWT token. Returns user ID, username, and email. Requires authentication.
+// @Summary Get current user session
+// @Description Retrieves the current user's session information based on the JWT token. Returns user ID, username, and email. Requires authentication.
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} utils.Payload "User session retrieved successfully"
+// @Failure 401 {object} utils.Payload "Unauthorized - invalid or missing token"
+// @Router /api/v1/me [get]
+func GetCurrentUser(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		utils.JSONResponse(w, http.StatusUnauthorized, utils.Payload{
+			Success: false,
+			Message: "Unauthorized",
+		})
+		return
+	}
+
+	var user models.User
+	if err := repositories.DB.First(&user, "id = ?", userID).Error; err != nil {
+		utils.JSONResponse(w, http.StatusUnauthorized, utils.Payload{
+			Success: false,
+			Message: "Unauthorized",
+		})
+		return
+	}
+
+	utils.JSONResponse(w, http.StatusOK, utils.Payload{
+		Success: true,
+		Message: "User retrieved successfully",
+		Data: map[string]any{
+			"id":       user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+		},
+	})
+}
+
+// POST /api/v1/logout
+// Logs out the current user by clearing the JWT token cookie. Returns a success message on successful logout.
+// @Summary User logout
+// @Description Logs out the current user by clearing the JWT token cookie. Returns a success message on successful logout.
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} utils.Payload "Logged out successfully"
+// @Failure 500 {object} utils.Payload "Internal server error"
+// @Router /api/v1/logout [post]
 func Logout(w http.ResponseWriter, r *http.Request) {
 	isProd := config.Envs.Environment == "production"
 
@@ -272,6 +353,16 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GET /api/v1/auth/google/login
+// Initiates the Google OAuth login flow by generating a state parameter and redirecting the user to Google's OAuth consent screen.
+// @Summary Initiate Google OAuth login
+// @Description Initiates the Google OAuth login flow by generating a state parameter and redirecting the user to Google's OAuth consent screen.
+// @Tags Auth
+// @Produce json
+// @Param redirect query string false "Optional redirect type (login or register)"
+// @Success 302 "Redirects to Google OAuth consent screen"
+// @Failure 500 {object} utils.Payload "Internal server error"
+// @Router /api/v1/auth/google/login [get]
 func HandleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	redirectType := r.URL.Query().Get("redirect") // "login" or "register"
 	if redirectType == "" {
@@ -288,6 +379,16 @@ func HandleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
+// GET /api/v1/auth/google/callback
+// Handles the callback from Google OAuth, exchanges the code for a token, retrieves user info, and either logs in or registers the user based on the flow type. Issues a JWT token and sets it in an HTTP-only cookie before redirecting the user to the appropriate frontend page.
+// @Summary Handle Google OAuth callback
+// @Description Handles the callback from Google OAuth, exchanges the code for a token, retrieves user info, and either logs in or registers the user based on the flow type. Issues a JWT token and sets it in an HTTP-only cookie before redirecting the user to the appropriate frontend page.
+// @Tags Auth
+// @Produce json
+// @Success 302 "Redirects to frontend with login/register status"
+// @Failure 400 {object} utils.Payload "Invalid OAuth state"
+// @Failure 500 {object} utils.Payload "Internal server error"
+// @Router /api/v1/auth/google/callback [get]
 func HandleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.FormValue("state")
 	stateData, err := DecodeState(state)

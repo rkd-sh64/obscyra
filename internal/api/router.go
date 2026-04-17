@@ -54,6 +54,7 @@ func SetupRouter() http.Handler {
 		http.StripPrefix("/share", shareMux),
 	)
 
+	protectedMux.HandleFunc("/me", handlers.GetCurrentUser)
 	protectedMux.HandleFunc("/logout", handlers.Logout)
 
 	mainMux.Handle("/api/v1/",
